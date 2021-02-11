@@ -18,7 +18,10 @@ type Server struct {
 func main() {
 	fmt.Println("hi, welcome to server..")
 	ctx := context.Background()
-	listen, _ := net.Listen("tcp", "0.0.0.0:50051")
+	listen, err := net.Listen("tcp", "0.0.0.0:50051")
+	if err != nil {
+		fmt.Printf("err when listen tcp: %v", err)
+	}
 	// Connection Timeout Setting
 	opts := []grpc.ServerOption{grpc.ConnectionTimeout(120 * time.Second)}
 	grpcServer := grpc.NewServer(opts...)
@@ -35,7 +38,7 @@ func main() {
 		}
 	}()
 
-	err := grpcServer.Serve(listen)
+	err = grpcServer.Serve(listen)
 	if err != nil {
 		fmt.Printf("err when serve:%v", err)
 	}
@@ -45,10 +48,11 @@ func main() {
 func (s *Server) TestGreet(ctx context.Context, req *pb.GreetRequest) (*pb.GreetResponse, error) {
 
 	// set backend auth timeout
-	ctx, _ = context.WithTimeout(ctx, 30*time.Second)
-	fmt.Printf("begining time %v\n", time.Now())
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
 	// Assume auth cost 20 sec
+	fmt.Printf("begining time %v\n", time.Now())
 	time.Sleep(20 * time.Second)
 	fmt.Printf("receiving time %v\n", time.Now())
 

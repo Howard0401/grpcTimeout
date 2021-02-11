@@ -13,7 +13,10 @@ func main() {
 	ctx := context.Background()
 
 	// Set Connection
-	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
+	opts := []grpc.DialOption{
+		grpc.WithInsecure(),
+	}
+	conn, err := grpc.DialContext(ctx, "localhost:50051", opts...)
 	if err != nil {
 		log.Fatalf("Conn Err: %v", err)
 	}
