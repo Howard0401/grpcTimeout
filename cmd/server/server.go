@@ -48,12 +48,12 @@ func main() {
 func (s *Server) TestGreet(ctx context.Context, req *pb.GreetRequest) (*pb.GreetResponse, error) {
 
 	// set backend auth timeout
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 100*time.Second)
 	defer cancel()
 
 	// Assume auth cost 20 sec
 	fmt.Printf("begining time %v\n", time.Now())
-	time.Sleep(20 * time.Second)
+	time.Sleep(90 * time.Second)
 	fmt.Printf("receiving time %v\n", time.Now())
 
 	if ctx.Err() == context.Canceled {
@@ -64,6 +64,7 @@ func (s *Server) TestGreet(ctx context.Context, req *pb.GreetRequest) (*pb.Greet
 	select {
 	case <-ctx.Done():
 		log.Printf("TestGreet err: %v", ctx.Err())
+		return nil, ctx.Err()
 	default:
 		log.Println("server side: TestGreet ctx works well")
 	}
@@ -72,4 +73,5 @@ func (s *Server) TestGreet(ctx context.Context, req *pb.GreetRequest) (*pb.Greet
 	req.Say = fmt.Sprintf("Received: %v", req.Say)
 	log.Printf("Receive:%v", req.Say)
 	return &pb.GreetResponse{Receive: req.Say}, nil
+
 }
