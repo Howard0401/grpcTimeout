@@ -20,8 +20,9 @@ func main() {
 	ctx := context.Background()
 	listen, _ := net.Listen("tcp", "0.0.0.0:50051")
 
-	opts := []grpc.ServerOption{grpc.ConnectionTimeout(120 * time.Second)}
-	grpcServer := grpc.NewServer(opts...)
+	// opts := []grpc.ServerOption{grpc.ConnectionTimeout(120 * time.Second)}
+	// grpcServer := grpc.NewServer(opts...)
+	grpcServer := grpc.NewServer()
 
 	s := &Server{}
 	pb.RegisterHelloServer(grpcServer, s)
