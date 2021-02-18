@@ -1,8 +1,9 @@
 syntax = "proto3";
+
 package pb;
 option go_package=".;pb";
 
-
+import "google/api/annotations.proto";
 // message Greet {
 //     string msg = 1;
 // }
@@ -17,5 +18,9 @@ message GreetResponse {
 }
 
 service Hello {
-    rpc TestGreet(GreetRequest) returns (GreetResponse) {};
+    rpc TestGreet(GreetRequest) returns (GreetResponse) {
+        option (google.api.http) = {
+            get: "/greet"
+        };
+    };
 }

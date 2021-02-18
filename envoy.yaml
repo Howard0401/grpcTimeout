@@ -1,0 +1,507 @@
+admin:
+  #store logs /etc/logrotate.d, so the log rotate policy is used.
+  access_log_path: /etc/logrotate.d/admin_access.log
+  #access_log_path: /tmp/envoy_info.log
+  #access_log_path: /dev/null
+  #access_log_path: /dev/stderr
+  address:
+    socket_address: { address: 0.0.0.0, port_value: 9901 }
+
+static_resources:
+  listeners:
+  - name: listener_http
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 8080 }
+    filter_chains:
+    #- filter_chain_match:
+    #    server_names: ["ix2-thomas.ixtrio.com", "ixtrio.com"]
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        #config:
+        typed_config:
+          "@type": type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager
+          codec_type: auto
+          stat_prefix: ingress_http
+          access_log:
+          - name: envoy.file_access_log
+            config:
+              path: "/dev/stdout"
+          upgrade_configs:
+          #websocket needs this special for key-server
+          - upgrade_type: websocket
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: backend
+              domains: ["*"]
+              #domains:
+                #- "*"
+                #- "ixtrio.com"
+                #- "grpc-dev-1196752113.ap-northeast-1.elb.amazonaws.com"
+                #- "ix2-gcp.ixtrio.com"
+                #- "ix2-internal.ixtrio.com"
+                #- "www.sample.mars.com"
+              routes:
+              # Check the health of envoy to AWS Load balancer
+              # return 204, no content
+              - match: { prefix: "/health" }
+                direct_response:
+                  status: 204
+              - match:  { prefix: "/lbtest" }
+                route:
+                  cluster: envoy-lbtest
+              #keyserver
+              - match: { prefix: "/ks/"}
+                route:
+                  prefix_rewrite: "/"
+                  cluster: keyserver
+              #IX1.5 Restful apis
+              - match: { prefix: "/api/V1/gateway/"}
+                route:
+                  cluster: trio-mini-api
+              - match: { prefix: "/api/V1/auth/"}
+                route:
+                  cluster: trio-mini-auth
+              - match: { prefix: "/api/V1/pushMessage/"}
+                route:
+                  cluster: trio-mini-push
+              - match: { prefix: "/api/V1/saml/"}
+                route:
+                  cluster: trio-mini-saml
+              ## x2db-service, schema protos.IX2Console ##
+              - match: { prefix: "/protos.IX2Console" }
+                route:
+                  cluster: x2db-grpc
+                  #max_grpc_timeout: 0s
+              - match: { prefix: "/api/V1/x2db-service" }
+                route:
+                  cluster: x2db-restful
+                  #max_grpc_timeout: 0s
+              #- match: { prefix: "/version" }
+              #  route:
+              #    cluster: x2db-restful
+              ## IX-Cloud
+              - match: { prefix: "/protos.IXCloud" }
+                route:
+                  cluster: IXCloud-grpc
+                  #max_grpc_timeout: 0s
+              - match: { prefix: "/api/V2/IXCloud" }
+                route:
+                  cluster: IXCloud-Restful
+                  #max_grpc_timeout: 0s
+              #- match: { prefix: "/" }
+              #  route:
+              #    cluster: ix2-console
+                  #timeout: 0s
+              #web console: IX2Admin, IX2Console, IX2Domain
+              #!!!rewrite uri is applied, because nginx.conf uses different routing path.!!!
+              #matching policy: uri matches prefix from the first prefix to the last prefix.
+              #If any matches, envoy uses it and matches ends.
+              #so the /ix2 is in the last order to final "prod".
+              - match: { prefix: "/ix2web/staging"}
+                route:
+                  prefix_rewrite: "/staging"
+                  cluster: web-backend
+              - match: { prefix: "/ix2web/dev"}
+                route:
+                  prefix_rewrite: "/dev"
+                  cluster: web-backend
+              - match: { prefix: "/ix2web/test"}
+                route:
+                  prefix_rewrite: "/test"
+                  cluster: web-backend
+              #shortest uri is the last matching
+              - match: { prefix: "/ix2web/"}
+                route:
+                  prefix_rewrite: "/"
+                  cluster: web-backend
+              cors:
+                allow_origin_string_match:
+                  - prefix: "*"
+                allow_methods: GET, PUT, DELETE, POST, OPTIONS
+                #metadata header of grpc should be added here!
+                allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout,ixcloudaccesstoken,ixcloudlogintoken,ixserviceephemeralpubkey,ix2serviceaccesstoken
+                max_age: "1728000"
+                expose_headers: custom-header-1,grpc-status,grpc-message
+          http_filters:
+            #- name: envoy.router
+            - name: envoy.filters.http.grpc_web
+            - name: envoy.filters.http.cors
+            - name: envoy.filters.http.router
+  #https 443
+  - name: listener_https
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 443 }
+    filter_chains:
+    #- filter_chain_match:
+    #    server_names: ["ix2-thomas.ixtrio.com", "ixtrio.com"]
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        #config:
+        typed_config:
+          "@type": type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager
+          codec_type: auto
+          stat_prefix: ingress_http
+          access_log:
+          - name: envoy.file_access_log
+            config:
+              path: "/dev/stdout"
+          upgrade_configs:
+          #websocket needs this special for key-server
+          - upgrade_type: websocket
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: backend
+              #domains: ["*"]
+              domains:
+                #- "*"
+                #- "ix2-thomas.ixtrio.com"
+                - "ix2-internal.ixtrio.com"
+                - "ix2-gcp.ixtrio.com"
+              routes:
+              # Check the health of envoy to AWS Load balancer
+              # return 204, no content
+              - match: { prefix: "/health" }
+                direct_response:
+                  status: 204
+              - match:  { prefix: "/lbtest" }
+                route:
+                  cluster: envoy-lbtest
+              #IX1.5
+              - match: { prefix: "/api/V1/gateway/"}
+                route:
+                  cluster: trio-mini-api
+              - match: { prefix: "/api/V1/auth/"}
+                route:
+                  cluster: trio-mini-auth
+              - match: { prefix: "/api/V1/pushMessage/"}
+                route:
+                  cluster: trio-mini-push
+              - match: { prefix: "/api/V1/saml/"}
+                route:
+                  cluster: trio-mini-saml
+              #keyserver
+              - match: { prefix: "/ks/"}
+                route:
+                  prefix_rewrite: "/"
+                  cluster: keyserver
+
+              ## x2db-service, schema protos.IX2Console ##
+              - match: { prefix: "/protos.IX2Console" }
+                route:
+                  cluster: x2db-grpc
+                  #max_grpc_timeout: 0s
+              - match: { prefix: "/api/V1/x2db-service/" }
+                route:
+                  cluster: x2db-restful
+                  #max_grpc_timeout: 0s
+              #- match: { prefix: "/version" }
+              #  route:
+              #    cluster: x2db-restful
+              ## IX-Cloud
+              - match: { prefix: "/protos.IXCloud" }
+                route: #grpc
+                  cluster: IXCloud-grpc
+                  #max_grpc_timeout: 0s
+              - match: { prefix: "/api/V2/IXCloud" }
+                route:
+                  cluster: IXCloud-Restful
+                  #max_grpc_timeout: 0s
+              #web console: IX2Admin, IX2Console, IX2Domain
+              #!!!rewrite uri is applied, because nginx.conf uses different routing path.!!!
+              #matching policy: uri matches prefix from the first prefix to the last prefix.
+              #If any matches, envoy uses it and matches ends.
+              #so the /ix2 is in the last order to final "prod".
+              - match: { prefix: "/ix2web/staging"}
+                route:
+                  prefix_rewrite: "/staging"
+                  cluster: web-backend
+              - match: { prefix: "/ix2web/dev"}
+                route:
+                  prefix_rewrite: "/dev"
+                  cluster: web-backend
+              - match: { prefix: "/ix2web/test"}
+                route:
+                  prefix_rewrite: "/test"
+                  cluster: web-backend
+              #shortest uri is the last match
+              - match: { prefix: "/ix2web/"}
+                route:
+                  prefix_rewrite: "/"
+                  cluster: web-backend
+              cors:
+                allow_origin_string_match:
+                  - prefix: "*"
+                allow_methods: GET, PUT, DELETE, POST, OPTIONS
+                #metadata header of grpc should be added here!
+                allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout,ixcloudaccesstoken,ixcloudlogintoken,ixserviceephemeralpubkey,ix2serviceaccesstoken
+                max_age: "1728000"
+                expose_headers: custom-header-1,grpc-status,grpc-message
+          http_filters:
+            #- name: envoy.router
+            - name: envoy.filters.http.grpc_web
+            - name: envoy.filters.http.cors
+            - name: envoy.filters.http.router
+      #ssl termination
+      transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+            common_tls_context:
+              tls_certificates:
+                - certificate_chain: { filename: "/etc/certificate.pem" }
+                  private_key: { filename: "/etc/private.key" }
+              #validation_context:
+              #  trusted_ca:
+              #    filename: certs/cacert.pem
+
+  clusters:
+    #load balancer tester
+    - name: envoy-lbtest
+      connect_timeout: 1s
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      #hosts: [
+      #  { socket_address: { address: target1, port_value: 80 }}
+      #  { socket_address: { address: target2, port_value: 80 }}
+      #  { socket_address: { address: quirky_almeida, port_value: 80 }},
+      #  { socket_address: { address: 172.17.0.3, port_value: 80 }}
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #grpc service container name or an ip address
+                      address: target1
+                      #envoy send grpc calls to server container port
+                      port_value: 80
+              - endpoint:
+                  address:
+                    socket_address:
+                      #grpc service container name or an ip address
+                      address: target2
+                      #envoy send grpc calls to server container port
+                      port_value: 80
+    #web nginx
+    - name: web-backend
+      connect_timeout: 10s
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #service container name or an ip address
+                      address: ix2-web
+                      #service container port, not host port
+                      port_value: 80 
+                      #address: 192.168.0.10
+                      #port_value: 5500
+              #- endpoint:
+              #    address:
+              #      socket_address:
+                      #grpc service container name or an ip address
+              #        address: ix2console2
+                      #envoy send grpc calls to server container port
+              #        port_value: 2022
+    #IX-Cloud
+    - name: IXCloud-grpc
+      connect_timeout: 10s
+      http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #grpc service container name or an ip address
+                      address: IX-Cloud
+                      #envoy send grpc calls to server container port
+                      port_value: 16888
+    - name: IXCloud-Restful
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #grpc service container name or an ip address
+                      address: IX-Cloud
+                      #envoy send grpc calls to server container port
+                      port_value: 16899
+    #x2db-service grpc
+    - name: x2db-grpc
+      connect_timeout: 10s
+      http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #grpc service container name or an ip address
+                      address: x2db-service
+                      #envoy send grpc calls to server container port
+                      port_value: 2031
+    #x2db-restful
+    - name: x2db-restful
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #grpc service container name or an ip address
+                      #address: x2db-service
+                      address: 192.168.160.10
+                      #envoy send grpc calls to server container port
+                      port_value: 2030
+
+    #IX1.5 node.js restful
+    - name: trio-mini-api
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #micro service container name or an ip address
+                      address: trio-mini-api
+                      #envoy send calls to micro server container port
+                      port_value: 1366
+
+    - name: trio-mini-auth
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #micro service container name or an ip address
+                      address: trio-mini-auth
+                      #envoy send calls to micro server container port
+                      port_value: 1367
+
+    - name: trio-mini-push
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #micro service container name or an ip address
+                      address: trio-mini-push
+                      #envoy send calls to micro server container port
+                      port_value: 1368
+
+    - name: trio-mini-saml
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #micro service container name or an ip address
+                      address: trio-mini-saml
+                      #envoy send calls to micro server container port
+                      port_value: 7000
+                      
+    - name: trio-mini-entrance
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #micro service container name or an ip address
+                      address: trio-mini-entrance
+                      #envoy send calls to micro server container port
+                      port_value: 1865
+
+    - name: keyserver
+      connect_timeout: 10s
+      #http2_protocol_options: {}
+      type: STRICT_DNS
+      #type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: cluster_0
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      #micro service container name or an ip address
+                      address: keyserver.ixtrio.com 
+                      #envoy send calls to micro server container port
+                      port_value: 3000

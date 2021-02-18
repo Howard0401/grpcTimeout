@@ -1,0 +1,6 @@
+grpc-timeout:
+  MaxConnectionAge: 100
+  MaxConnectionAgeGrace: 100 
+  Time: 10 
+  Timeout: 10
+  Sleep: 90

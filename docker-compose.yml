@@ -1,0 +1,56 @@
+version: "3.7"
+services:
+   ix2-gateway:
+    image: ix2-gateway
+    container_name: ix2-gateway
+    restart: always
+    volumes:
+      - ${PWD}/ix2-gateway/envoy.yaml:/etc/envoy/envoy.yaml
+      - ${PWD}/ix2-gateway/ca-cert/cloudflare/ix2-internal.ixtrio.com/ix2-internal.ixtrio.com.pem:/etc/certificate.pem
+      - ${PWD}/ix2-gateway/ca-cert/cloudflare/ix2-internal.ixtrio.com/ix2-internal.ixtrio.com.key:/etc/private.key
+      #fiziico office adsl ip:
+    ports:
+      - "50051:50051"
+    build:
+      context: ./
+      dockerfile: ./Dockerfile_gateway
+    networks:
+      - ixcp-network
+    entrypoint: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l trace --log-path /etc/logrotate.d/admin_access.log
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5M"
+        max-file: "10"
+
+   grpc_test_server:
+    image: test_timeout
+    restart: always
+    container_name: x2db-service
+    build:
+      context: ./
+      dockerfile: ./Dockerfile_server
+    working_dir: /app
+    networks:
+      - ixcp-network
+    ports:
+      #restful
+      #- ${HOST_GRPC_PORT}:${CONTAINER_GRPC_PORT}
+      - "2030:2030"
+      #grpc
+      #- ${HOST_RESTFUL_PORT}:${CONTAINER_RESTFUL_PORT}
+      - "2031:2031"
+      #debug level port
+      #- "9800:9800"
+    entrypoint: ./x2db-service -e ${ENV_FILE}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5M"
+        max-file: "10"
+
+  
+######################## IX 2.0 Server End ########################
+networks:
+  ixcp-network:
+    name: ixcp-network
