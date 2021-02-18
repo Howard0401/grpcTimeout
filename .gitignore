@@ -2,4 +2,5 @@
 /ix2-gateway
 /googleapis
 /google
-./envoy.yaml
+envoy.yaml
+docker-compose.yml
